@@ -2,6 +2,9 @@
 #' @description Functions for performing Sparse PCA using methods.
 #' @date 2025-04-25
 #' @author Rosember Guerra Urzola
+#'
+
+
 
 
 ### Penalty Functions ###
@@ -83,3 +86,80 @@ alt_spca_multi <- function(X, W0 = NULL, K, alpha, penalty = 'l1') {
   return(W)
 }
 
+### MM sparse pca ###
+
+mm_spca <- function(X, alpha, w0=NULL, maxiter = 1000, tol = 1e-6){
+  # input:
+  # X: data set
+  # alpha: penalty parameter greater than 0
+  # w0: Initial value for the component weights
+  # maxiter: Max number of iteration in the loop
+  # tol: stopping tolerance
+  
+  if (alpha < 0) stop("alpha must be non-negative.")
+  if (alpha == 0) {
+    pc <- prcomp(X)
+    return(list(w = pc$rotation[, 1], iter = 0, time = 0))
+  }
+  # Initial value for w
+  p = ncol(X)
+  if (is.null(w0)) w0 <- rnorm(p)
+  
+  # Ensure that data is scaled
+  X = scale(X)
+  tao = 1e-4 # diagonal perturbation
+  
+  # covariance matrix
+  Sig_hat = t(X) %*% X + tao*diag(p)
+  alpha_half = alpha/2
+  iter <- 0
+  runningtime = system.time({
+    while(iter<= maxiter){
+      Sig_w = Sig_hat %*% w0
+      # at least one elemente diffent than 0
+      if (all(Sig_w<alpha_half)){
+        w = w0
+        break
+      }
+      
+      Sig_w[Sig_w<alpha_half] = 0
+      w = Sig_w/sqrt(sum(Sig_w^2))
+      if (norm(w - w0, type = "2") < tol) break
+      
+      w0 <- w
+      iter <- iter + 1
+    }
+  })
+  return(list(w = w, iter = iter, time = runningtime[[3]]))
+}
+### GPower ###
+### Multiples w ###
+multi_spca <- function(method = 'MM',X,K, W0 = NULL, Alpha){
+  # calculate multiples PC's via deflation
+  # Using the MM and Gpower algorithms with l_0 penalties
+  
+  # Inputs:
+  # method: algorithm for the estimation, either MM or GP
+  # X: dataset
+  # K: Number of components
+  # W0: matrix with initial values for w0
+  # alpha: penalty parameter >0
+  
+  if (method == 'MM'){
+      spca_method = mm_spca  
+  }else{
+    spca_method = GPower
+  }
+  p = ncol(X)
+  if (K > p) stop("K cannot exceed the number of columns in X.")
+  if (is.null(W0)) W0 <- matrix(rnorm(ncol(X) * K), ncol(X), K)
+  if (length(Alpha) == 1) Alpha <- rep(Alpha, K)
+  else if (length(Alpha) != K) stop("alpha must be a scalar or a vector of length K.")
+  
+  W <- matrix(0, ncol(X), K)
+  for (k in 1:K) {
+    W[,k] = spca_method(X=X,alpha = Alpha[k], w0=W0[,k])$w
+    X <- X - X %*% W[, k] %*% t(W[, k])
+  }
+  return(W)
+}
