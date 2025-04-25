@@ -1,1 +1,10 @@
-data/
+# data files #
+*.csv
+*.json
+*.txt
+/data/*.txt
+*.Rhistory
+*.RData
+
+# folders #
+/data/*
